@@ -1352,7 +1352,76 @@ body {
   background: rgba(138, 115, 85, 0.1) !important;
   box-shadow: none !important;
 }
+
+/* ==================== 云存档界面 ==================== */
+.cloud-box {
+  width: 420px;
+  max-width: 92vw;
+  padding: 26px 28px;
+  background:
+    linear-gradient(160deg, rgba(42, 33, 50, 0.92) 0%, rgba(21, 17, 26, 0.96) 100%);
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cloud-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cloud-code {
+  flex: 1;
+  font-size: 22px;
+  letter-spacing: 6px;
+  text-align: center;
+  color: #d4af37;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  border-radius: 8px;
+  padding: 10px;
+  user-select: text;
+}
+
+.cloud-input {
+  flex: 1;
+  font-size: 18px;
+  letter-spacing: 4px;
+  text-align: center;
+  color: #e8e0d0;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 8px;
+  padding: 10px;
+  outline: none;
+  user-select: text;
+}
+
+.cloud-input:focus {
+  border-color: #d4af37;
+}
+
+.cloud-status {
+  min-height: 20px;
+  font-size: 13px;
+  color: #9a917d;
+  text-align: center;
+}
+
+.cloud-status.ok { color: #7dc87d; }
+.cloud-status.err { color: #e07070; }
+
+.cloud-tip {
+  font-size: 12px;
+  color: #8a7f68;
+  text-align: center;
+  line-height: 1.6;
+}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <div id="gameContainer">
@@ -1444,12 +1513,17 @@ body {
         <span class="mc-name">修行锻造</span>
         <span class="mc-desc">消耗战斗回忆<br>锻造武器与体魄</span>
       </button>
+      <button class="menu-card" id="cloudBtn">
+        <span class="mc-icon">☁</span>
+        <span class="mc-name">云存档</span>
+        <span class="mc-desc">存档码同步进度<br>换设备也不丢档</span>
+      </button>
     </div>
     <div class="start-controls">
       <span>左键</span> 攻击　　<span>右键</span> 弹反（把握时机！）　　<span>←/→+空格</span> 闪避　　<span>R</span> 喝药<br>
       Boss <span>架势崩溃</span> 时趁机猛攻！第 4 关起留意 <span>红色警告圈</span>，用闪避躲特殊攻击
     </div>
-    <div class="menu-version">影逐 · 境界之途 v2.0</div>
+    <div class="menu-version">影逐 · 境界之途 v2.1 · 云存档版</div>
   </div>
   
   <!-- Level Select: Canvas 世界地图（茶杯头式），此处仅保留返回按钮 -->
@@ -1508,6 +1582,27 @@ body {
     </div>
     <div class="forge-tip">✦ 每首次击败一位 Boss 获得 1 枚战斗回忆（连战模式同样生效）</div>
     <button class="result-btn back-btn" id="backFromForgeBtn">返回</button>
+  </div>
+
+  <!-- Cloud Save Screen -->
+  <div class="level-select" id="cloudScreen" style="display: none;">
+    <div class="level-title">云存档</div>
+    <div class="level-subtitle">— 存档码在手，天涯何处不江湖 —</div>
+    <div class="cloud-box">
+      <div class="cloud-row">
+        <div class="cloud-code" id="myCloudCode">—— ——</div>
+        <button class="result-btn" id="cloudCopyBtn" style="padding: 10px 16px;">复制</button>
+      </div>
+      <div class="cloud-status" id="cloudStatus">尚未连接云端</div>
+      <button class="result-btn" id="cloudUploadBtn">↑ 上传存档到云端</button>
+      <div class="cloud-row">
+        <input class="cloud-input" id="cloudCodeInput" maxlength="8" placeholder="输入存档码恢复">
+        <button class="result-btn" id="cloudDownloadBtn" style="padding: 10px 16px;">恢复</button>
+      </div>
+      <button class="result-btn back-btn" id="cloudNewCodeBtn">换一个新存档码（旧云端档作废）</button>
+      <div class="cloud-tip">· 存档码是恢复进度的唯一凭据，请截图或抄写保存<br>· 每次战斗结算后会自动同步到云端<br>· 从云端恢复会覆盖本机当前进度</div>
+    </div>
+    <button class="result-btn back-btn" id="cloudBackBtn">返回</button>
   </div>
   
   <!-- Result Screen -->
@@ -1613,25 +1708,13 @@ function getBossStyle() {
 function loadGameData() {
   const saved = localStorage.getItem('shadowGameData');
   if (saved) {
-    const data = JSON.parse(saved);
-    playerGold = data.gold || 0;
-    ownedSkins = new Set(data.ownedSkins || ['default']);
-    equippedSkin = data.equippedSkin || 'default';
-    completedLevels = new Set(data.completedLevels || []);
-    player.potionLevel = data.potionLevel || 0;
-    applyPotionUpgrade(player.potionLevel);
-    battleMemories = data.memories || 0;
-    weaponLevel = Math.min(data.weaponLevel || 0, FORGE_MAX_LEVEL);
-    vitalityLevel = Math.min(data.vitalityLevel || 0, FORGE_MAX_LEVEL);
-    rampageRecords = Object.assign(rampageRecords, data.rampageRecords || {});
-    player.maxHp = playerMaxHp();
-    player.hp = player.maxHp;
+    applySaveData(JSON.parse(saved));
   }
 }
 
-// Save game data
-function saveGameData() {
-  const data = {
+// 统一的存档序列化/反序列化（本地与云端共用）
+function collectSaveData() {
+  return {
     gold: playerGold,
     ownedSkins: Array.from(ownedSkins),
     equippedSkin: equippedSkin,
@@ -1642,7 +1725,27 @@ function saveGameData() {
     vitalityLevel: vitalityLevel,
     rampageRecords: rampageRecords
   };
-  localStorage.setItem('shadowGameData', JSON.stringify(data));
+}
+
+function applySaveData(data) {
+  playerGold = data.gold || 0;
+  ownedSkins = new Set(data.ownedSkins || ['default']);
+  equippedSkin = data.equippedSkin || 'default';
+  completedLevels = new Set(data.completedLevels || []);
+  player.potionLevel = data.potionLevel || 0;
+  applyPotionUpgrade(player.potionLevel);
+  battleMemories = data.memories || 0;
+  weaponLevel = Math.min(data.weaponLevel || 0, FORGE_MAX_LEVEL);
+  vitalityLevel = Math.min(data.vitalityLevel || 0, FORGE_MAX_LEVEL);
+  rampageRecords = Object.assign(rampageRecords, data.rampageRecords || {});
+  player.maxHp = playerMaxHp();
+  player.hp = player.maxHp;
+}
+
+// Save game data
+function saveGameData() {
+  localStorage.setItem('shadowGameData', JSON.stringify(collectSaveData()));
+  scheduleCloudPush();
 }
 
 // 应用药水升级
@@ -1652,6 +1755,113 @@ function applyPotionUpgrade(level) {
   player.maxPotions = cfg.maxPotions;
   player.drinkDuration = cfg.drinkDuration;
   if (player.potions > player.maxPotions) player.potions = player.maxPotions;
+}
+
+// ==================== 云存档（Supabase · 存档码模式） ====================
+// 部署前填入 Supabase 项目的 URL 与 anon key（Project Settings → API）
+const SUPABASE_URL = 'https://abvmgpbtoljmrbdomaje.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_GBlOiGtrp-7zqL9nRYEeYQ_d-FA6SxM';
+
+let sbClient = null;
+let cloudCode = localStorage.getItem('yzCloudCode') || '';
+let cloudBusy = false;
+let cloudPushTimer = null;
+
+function cloudAvailable() {
+  return typeof supabase !== 'undefined' && !!SUPABASE_URL && !!SUPABASE_ANON_KEY;
+}
+
+function initCloud() {
+  if (cloudAvailable()) {
+    try {
+      sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    } catch (e) {
+      console.warn('云存档初始化失败', e);
+    }
+  }
+}
+
+function makeCloudCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
+function ensureCloudCode() {
+  if (!cloudCode) {
+    cloudCode = makeCloudCode();
+    localStorage.setItem('yzCloudCode', cloudCode);
+  }
+  return cloudCode;
+}
+
+function setCloudStatus(text, cls) {
+  const el = document.getElementById('cloudStatus');
+  el.textContent = text;
+  el.className = 'cloud-status' + (cls ? ' ' + cls : '');
+}
+
+function scheduleCloudPush() {
+  if (!sbClient || !cloudCode) return;
+  clearTimeout(cloudPushTimer);
+  cloudPushTimer = setTimeout(() => pushCloudSave(true), 4000);
+}
+
+async function pushCloudSave(silent) {
+  if (!sbClient || !cloudCode || cloudBusy) return;
+  cloudBusy = true;
+  try {
+    const { error } = await sbClient.from('saves').upsert({
+      code: cloudCode,
+      data: collectSaveData(),
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'code' });
+    if (error) throw error;
+    if (!silent) setCloudStatus('✓ 上传成功 · ' + new Date().toLocaleTimeString(), 'ok');
+  } catch (e) {
+    if (!silent) setCloudStatus('上传失败：' + (e.message || e), 'err');
+  } finally {
+    cloudBusy = false;
+  }
+}
+
+async function pullCloudSave(code) {
+  if (!sbClient || cloudBusy) return;
+  cloudBusy = true;
+  try {
+    const { data, error } = await sbClient.from('saves').select('data').eq('code', code).maybeSingle();
+    if (error) throw error;
+    if (!data) { setCloudStatus('该存档码在云端没有存档', 'err'); return; }
+    if (!confirm('用云端存档覆盖本机当前进度？')) return;
+    applySaveData(typeof data.data === 'string' ? JSON.parse(data.data) : data.data);
+    saveGameData();
+    updateGoldDisplay();
+    setCloudStatus('✓ 已恢复：金币 ' + playerGold + ' · 回忆 ' + battleMemories + ' · 已通关 ' + completedLevels.size + ' 关', 'ok');
+  } catch (e) {
+    setCloudStatus('恢复失败：' + (e.message || e), 'err');
+  } finally {
+    cloudBusy = false;
+  }
+}
+
+function renderCloud() {
+  ensureCloudCode();
+  document.getElementById('myCloudCode').textContent = cloudCode;
+  if (!cloudAvailable()) {
+    setCloudStatus('云存档未配置（等待 Supabase 参数）', 'err');
+  } else if (!sbClient) {
+    setCloudStatus('云端连接失败，请检查网络', 'err');
+  } else {
+    setCloudStatus('已连接云端 · 存档码 ' + cloudCode, 'ok');
+  }
+}
+
+function showCloud() {
+  gameState = STATE.SKIN_SHOP; // 复用商店场景背景
+  document.getElementById('startScreen').style.display = 'none';
+  document.getElementById('cloudScreen').style.display = 'flex';
+  renderCloud();
 }
 
 let playerGold = 0;
@@ -1986,6 +2196,31 @@ function init() {
   document.getElementById('skinBtn').addEventListener('click', showSkinShop);
   document.getElementById('forgeBtn').addEventListener('click', showForge);
   document.getElementById('backFromForgeBtn').addEventListener('click', goToMainMenu);
+  // 云存档
+  document.getElementById('cloudBtn').addEventListener('click', showCloud);
+  document.getElementById('cloudBackBtn').addEventListener('click', goToMainMenu);
+  document.getElementById('cloudUploadBtn').addEventListener('click', () => pushCloudSave(false));
+  document.getElementById('cloudDownloadBtn').addEventListener('click', () => {
+    const code = document.getElementById('cloudCodeInput').value.trim().toUpperCase();
+    if (!/^[A-Z0-9]{4,8}$/.test(code)) { setCloudStatus('请输入 6 位存档码（字母数字）', 'err'); return; }
+    if (!sbClient) { setCloudStatus('云存档未配置', 'err'); return; }
+    pullCloudSave(code);
+  });
+  document.getElementById('cloudCopyBtn').addEventListener('click', () => {
+    const code = ensureCloudCode();
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(code).then(() => setCloudStatus('✓ 存档码已复制：' + code, 'ok'));
+    } else {
+      setCloudStatus('存档码：' + code + '（请手动抄写）', 'ok');
+    }
+  });
+  document.getElementById('cloudNewCodeBtn').addEventListener('click', () => {
+    if (!confirm('生成新存档码后，旧存档码对应的云端进度将无法再被本机访问，确定？')) return;
+    cloudCode = makeCloudCode();
+    localStorage.setItem('yzCloudCode', cloudCode);
+    renderCloud();
+    pushCloudSave(false);
+  });
   document.getElementById('weaponUpBtn').addEventListener('click', () => tryUpgradeForge('weapon'));
   document.getElementById('vitalityUpBtn').addEventListener('click', () => tryUpgradeForge('vitality'));
   document.getElementById('resultBtn').addEventListener('click', goToMainMenu);
@@ -1998,6 +2233,7 @@ function init() {
   // Load saved game data
   loadGameData();
   updateGoldDisplay();
+  initCloud();
   
   requestAnimationFrame(gameLoop);
 }
@@ -2154,6 +2390,7 @@ function goToMainMenu() {
   document.getElementById('rampageSelect').style.display = 'none';
   document.getElementById('skinShop').style.display = 'none';
   document.getElementById('forgeScreen').style.display = 'none';
+  document.getElementById('cloudScreen').style.display = 'none';
   document.getElementById('resultScreen').style.display = 'none';
   document.getElementById('playerHud').style.display = 'none';
   document.getElementById('bossHud').style.display = 'none';
