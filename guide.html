@@ -319,8 +319,10 @@ async function api(path, opts = {}) {
       ...(opts.headers || {})
     }
   });
-  if (!res.ok) throw new Error("HTTP " + res.status);
-  return res.json();
+  const text = await res.text();
+  if (!res.ok) throw new Error("HTTP " + res.status + " " + text.slice(0, 120));
+  // POST 插入成功时 Supabase 返回空响应体，不能强制 json()
+  return text ? JSON.parse(text) : null;
 }
 
 function card(r, i) {
