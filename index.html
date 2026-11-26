@@ -1518,6 +1518,11 @@ body {
         <span class="mc-name">云存档</span>
         <span class="mc-desc">存档码同步进度<br>换设备也不丢档</span>
       </button>
+      <button class="menu-card" id="guideBtn">
+        <span class="mc-icon">📖</span>
+        <span class="mc-name">武学宝鉴</span>
+        <span class="mc-desc">攻略问答在线检索<br>侠客留言切磋</span>
+      </button>
     </div>
     <div class="start-controls">
       <span>左键</span> 攻击　　<span>右键</span> 弹反（把握时机！）　　<span>←/→+空格</span> 闪避　　<span>R</span> 喝药<br>
@@ -2198,6 +2203,8 @@ function init() {
   document.getElementById('backFromForgeBtn').addEventListener('click', goToMainMenu);
   // 云存档
   document.getElementById('cloudBtn').addEventListener('click', showCloud);
+  // 武学宝鉴（攻略问答新页面）
+  document.getElementById('guideBtn').addEventListener('click', () => window.open('guide.html', '_blank'));
   document.getElementById('cloudBackBtn').addEventListener('click', goToMainMenu);
   document.getElementById('cloudUploadBtn').addEventListener('click', () => pushCloudSave(false));
   document.getElementById('cloudDownloadBtn').addEventListener('click', () => {

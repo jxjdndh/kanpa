@@ -197,6 +197,62 @@ h1 {
   font-size: 14px;
 }
 
+/* ---------- 评论区 ---------- */
+.cmt-toggle {
+  margin-top: 10px;
+  background: transparent;
+  border: none;
+  color: #9a917d;
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  padding: 2px 0;
+  transition: color 0.15s;
+}
+.cmt-toggle:hover { color: #d4af37; }
+
+.cmt-panel {
+  margin-top: 10px;
+  border-top: 1px dashed rgba(212, 175, 55, 0.25);
+  padding-top: 6px;
+}
+
+.cmt-item { padding: 9px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+.cmt-item:last-of-type { border-bottom: none; }
+.cmt-meta { font-size: 11.5px; color: #8a7f68; margin-bottom: 3px; }
+.cmt-text { font-size: 13px; line-height: 1.6; color: #c8bfa8; }
+
+.cmt-form { display: flex; gap: 8px; margin-top: 10px; }
+.cmt-input {
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  border-radius: 6px;
+  padding: 7px 10px;
+  color: #f0e8d8;
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  user-select: text;
+}
+.cmt-input:focus { border-color: rgba(212, 175, 55, 0.6); }
+.cmt-nick { width: 108px; flex: none; }
+.cmt-body { flex: 1; min-width: 0; }
+.cmt-post {
+  flex: none;
+  padding: 7px 16px;
+  background: rgba(212, 175, 55, 0.14);
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  border-radius: 6px;
+  color: #d4af37;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.cmt-post:hover { background: rgba(212, 175, 55, 0.26); }
+.cmt-msg { font-size: 12px; min-height: 16px; margin-top: 6px; color: #9a917d; }
+.cmt-msg.err { color: #e07070; }
+
 footer {
   margin-top: auto;
   padding: 26px 0 34px;
@@ -271,6 +327,7 @@ function card(r, i) {
   const sim = typeof r.similarity === "number";
   const pct = sim ? Math.max(6, Math.min(100, r.similarity * 100)) : 0;
   const cat = (r.category || "faq").toLowerCase();
+  const doc = esc(r.doc_id);
   return `<div class="result" style="animation-delay:${i * 0.06}s">
     <div class="r-head">
       <span class="r-title">${esc(r.title)}</span>
@@ -281,8 +338,86 @@ function card(r, i) {
       <div class="r-meter-bar"><div class="r-meter-fill" style="width:${pct}%"></div></div>
       <div class="r-meter-num">契合度 ${(r.similarity * 100).toFixed(1)}%</div>
     </div>` : ""}
+    <button class="cmt-toggle" data-doc="${doc}">💬 留言切磋</button>
+    <div class="cmt-panel" id="cmt-${doc}" hidden></div>
   </div>`;
 }
+
+// ---------- 评论区 ----------
+const cmtCooldown = {};
+
+function timeAgo(iso) {
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return "刚刚";
+  if (s < 3600) return Math.floor(s / 60) + " 分钟前";
+  if (s < 86400) return Math.floor(s / 3600) + " 小时前";
+  return Math.floor(s / 86400) + " 天前";
+}
+
+async function renderComments(docId, panel) {
+  panel.innerHTML = '<div class="cmt-msg">加载留言中……</div>';
+  try {
+    const rows = await api("/rest/v1/comments?doc_id=eq." + encodeURIComponent(docId) +
+      "&select=nickname,content,created_at&order=created_at.desc&limit=20");
+    const list = rows.length
+      ? rows.map(c =>
+          `<div class="cmt-item">
+            <div class="cmt-meta">${esc(c.nickname)} · ${timeAgo(c.created_at)}</div>
+            <div class="cmt-text">${esc(c.content)}</div>
+          </div>`).join("")
+      : '<div class="cmt-msg">还没有留言，来当第一位侠客</div>';
+    panel.innerHTML = list + `
+      <div class="cmt-form">
+        <input class="cmt-input cmt-nick" maxlength="12" placeholder="昵称（可留空）">
+        <input class="cmt-input cmt-body" maxlength="150" placeholder="说点什么……">
+        <button class="cmt-post">发送</button>
+      </div>
+      <div class="cmt-msg cmt-status"></div>`;
+    panel.querySelector(".cmt-post").addEventListener("click",
+      () => postComment(docId, panel));
+    panel.querySelector(".cmt-body").addEventListener("keydown", e => {
+      if (e.key === "Enter") postComment(docId, panel);
+    });
+  } catch (e) {
+    panel.innerHTML = '<div class="cmt-msg err">留言加载失败：' + esc(e.message) + '</div>';
+  }
+}
+
+function toggleComments(docId, panel) {
+  if (panel.hidden) { panel.hidden = false; renderComments(docId, panel); }
+  else panel.hidden = true;
+}
+
+async function postComment(docId, panel) {
+  const nick = panel.querySelector(".cmt-nick").value.trim() || "无名侠客";
+  const body = panel.querySelector(".cmt-body").value.trim();
+  const st = panel.querySelector(".cmt-status");
+  if (!body) { st.textContent = "先写点内容再发送"; st.classList.add("err"); return; }
+  const now = Date.now();
+  if (cmtCooldown[docId] && now - cmtCooldown[docId] < 15000) {
+    st.textContent = "侠士慢行，稍候片刻再发";
+    st.classList.add("err"); return;
+  }
+  cmtCooldown[docId] = now;
+  try {
+    await api("/rest/v1/comments", {
+      method: "POST",
+      body: JSON.stringify({ doc_id: docId, nickname: nick.slice(0, 12), content: body.slice(0, 150) })
+    });
+    st.classList.remove("err");
+    renderComments(docId, panel);
+  } catch (e) {
+    st.textContent = "发送失败：" + e.message;
+    st.classList.add("err");
+  }
+}
+
+resultsEl.addEventListener("click", e => {
+  const btn = e.target.closest(".cmt-toggle");
+  if (!btn) return;
+  const panel = document.getElementById("cmt-" + btn.dataset.doc);
+  if (panel) toggleComments(btn.dataset.doc, panel);
+});
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, c =>
