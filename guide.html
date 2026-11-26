@@ -289,6 +289,35 @@ function esc(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// ---------- 分词计分检索（整句也能搜） ----------
+const STOP = new Set(["怎么", "什么", "为什么", "怎么办", "如何", "哪里", "哪个", "哪些",
+  "可以", "是不是", "有没有", "应该", "还是", "这样", "的话", "一下", "时候", "各种",
+  "进行", "出现", "或者", "以及", "然后", "但是", "所以", "如果", "大家", "我们"]);
+
+function tokenize(q) {
+  const out = new Set();
+  if (q.length >= 2 && !STOP.has(q)) out.add(q);
+  for (let i = 0; i < q.length - 1; i++) {
+    const b = q.slice(i, i + 2);
+    if (!STOP.has(b)) out.add(b);
+  }
+  return [...out].slice(0, 10);
+}
+
+function scoreRows(rows, toks) {
+  return rows.map(r => {
+    let s = 0;
+    for (const t of toks) {
+      if (r.title.includes(t)) s += 3;
+      if (r.content.includes(t)) s += 1;
+    }
+    return { ...r, score: s };
+  })
+  .filter(r => r.score > 0)
+  .sort((a, b) => b.score - a.score)
+  .slice(0, 6);
+}
+
 async function search() {
   const q = qBox.value.trim();
   if (!q) { statusEl.textContent = "先写下你的疑问"; return; }
@@ -306,10 +335,17 @@ async function search() {
       });
       rows = await res.json();
     } else {
-      // 关键词检索兜底（标题/正文模糊匹配）
+      // 分词多路匹配：把整句拆成词块，任一命中即入围，按命中强度排序
+      const toks = tokenize(q);
+      const cond = toks.map(t =>
+        `title.ilike.*${encodeURIComponent(t)}*,content.ilike.*${encodeURIComponent(t)}*`
+      ).join(",");
       rows = await api("/rest/v1/game_knowledge" +
-        `?or=(title.ilike.*${encodeURIComponent(q)}*,content.ilike.*${encodeURIComponent(q)}*)` +
-        "&select=doc_id,title,content,category&limit=8");
+        `?or=(${cond})&select=doc_id,title,content,category&limit=50`);
+      rows = scoreRows(rows, toks);
+      // 归一化为契合度用于展示
+      const max = Math.max(...rows.map(r => r.score), 1);
+      rows.forEach(r => { r.similarity = Math.min(0.95, r.score / max * 0.95); });
     }
     if (rows && rows.length) {
       statusEl.textContent = `寻得 ${rows.length} 部秘籍`;
